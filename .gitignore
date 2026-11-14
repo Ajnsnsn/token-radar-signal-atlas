@@ -1,0 +1,8 @@
+out/
+out-check/
+node_modules/
+*.tar.gz
+*.log
+.env
+.DS_Store
+Thumbs.db

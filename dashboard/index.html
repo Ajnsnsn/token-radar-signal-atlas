@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Offline research for possible token launches. Peer valuation, uncertain evidence and practical participation plans.">
+  <title>Signal Atlas — Token launch research</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="detail.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#" aria-label="Signal Atlas home"><span class="brand-symbol">a<span>✦</span></span><span>SIGNAL<br>ATLAS</span></a>
+    <div class="edition">RESEARCH TERMINAL / 01</div>
+    <nav aria-label="Main navigation">
+      <button class="nav active" data-view="radar"><span>◈</span> Launch radar <b id="nav-count"></b></button>
+      <button class="nav" data-view="peers"><span>◫</span> Token benchmarks</button>
+      <button class="nav" data-view="model"><span>⌘</span> Model &amp; evidence</button>
+    </nav>
+    <div class="side-label">YOUR RESEARCH</div>
+    <button class="nav" id="shortlist-nav"><span>☆</span> Shortlist <b id="saved-count">0</b></button>
+    <div class="sidebar-note"><span class="live-dot"></span> SEALED SNAPSHOT<strong id="snapshot-date"></strong><p>One fixed observation.<br>Every estimate reproducible.</p></div>
+    <div class="side-footer">MADE TO INVESTIGATE.<br>NOT TO PREDICT A LAUNCH.</div>
+  </aside>
+  <main>
+    <header class="topbar"><span>RESEARCH / <strong id="breadcrumb">LAUNCH RADAR</strong></span><span class="offline"><i></i> Offline by design <span>·</span> USD</span></header>
+    <section id="workspace" aria-live="polite"></section>
+    <footer class="page-footer"><span>Signal Atlas · Snapshot-derived research</span><span>No launch probability, airdrop entitlement or token price is inferred.</span></footer>
+  </main>
+  <dialog id="detail" aria-labelledby="detail-title"><div id="detail-content"></div></dialog>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="data.js"></script>
+  <script src="plans.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
