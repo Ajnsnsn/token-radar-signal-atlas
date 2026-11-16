@@ -34,11 +34,17 @@ test('entry reproduces exact output bytes and all source fits in the official do
 test('compact dashboard values match the board and screenshots satisfy byte/dimension caps',()=>{
   const board=JSON.parse(readFileSync(join(output,'board.json'),'utf8')).rows;
   const context:any={window:{}};runInNewContext(readFileSync(join(output,'dashboard/data.js'),'utf8'),context);
-  const d=context.window.ATLAS;assert.equal(d.rows.length,board.length);
+  runInNewContext(readFileSync(join(output,'dashboard/math.js'),'utf8'),context);
+  const d=context.AtlasMath.decode(context.window.ATLAS);assert.equal(d.rows.length,board.length);
   for(const [i,r] of board.entries()){
-    const a=d.rows[i];assert.equal(a[0],r.slug);assert.equal(a[1],r.name);
-    assert.equal(a[7],r.implied_value_usd);assert.equal(a[8],r.scenario_low_usd);assert.equal(a[9],r.scenario_high_usd);assert.equal(d.categories[a[2]],r.category);
+    const a=d.rows[i];assert.equal(a.slug,r.slug);assert.equal(a.name,r.name);
+    assert.equal(a.value,r.implied_value_usd);assert.equal(a.low,r.scenario_low_usd);assert.equal(a.high,r.scenario_high_usd);assert.equal(a.category,r.category);
+    assert.equal(a.expansion,r.model.scenario_expansion);assert.equal(JSON.stringify(a.peerSlugs),JSON.stringify(r.model.peer_examples));
   }
+  const document=JSON.parse(readFileSync(join(output,'board.json'),'utf8'));
+  assert.equal(JSON.stringify(d.audit),JSON.stringify(document.audit));
+  assert.equal(d.peers.length,88);assert.equal(new Set(d.peers.map(p=>p.tokenKey)).size,88);
+  assert.equal(context.window.ATLAS.inputSha256,document.input_sha256);
   for(const image of readdirSync(join(root,'screenshots'))){
     const bytes=readFileSync(join(root,'screenshots',image));assert.ok(bytes.length<=524288);
     assert.equal(bytes.readUInt16BE(0),0xffd8);assert.equal(bytes.readUInt16BE(bytes.length-2),0xffd9);

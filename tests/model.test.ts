@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {ageDays,ageFactor,boardIssue,buildAtlas,calibrate,excludedProduct,growthFactor,hasToken,PARAMETERS,parseSnapshot,quantile} from '../lib/model.ts';
+import {ageDays,ageFactor,boardIssue,buildAtlas,calibrate,estimate,excludedProduct,growthFactor,hasToken,PARAMETERS,parseSnapshot,quantile,tokenKey} from '../lib/model.ts';
 const input=process.env.ATLAS_TEST_INPUT || fileURLToPath(new URL('../../kit/token-radar-01-kit/input/snapshot.json',import.meta.url));
 const snapshot=parseSnapshot(readFileSync(input,'utf8'));
 const atlas=buildAtlas(snapshot);
@@ -55,4 +55,43 @@ test('runs reproduce exactly and data integrity failures are detected',()=>{
   assert.equal(JSON.stringify(buildAtlas(snapshot)),JSON.stringify(atlas));
   const duplicate=structuredClone(snapshot);duplicate.protocols.push(duplicate.protocols[0]);assert.throws(()=>parseSnapshot(JSON.stringify(duplicate)),/Invalid protocol/);
   const broken=structuredClone(atlas.board);broken[1].rank=1;assert.equal(boardIssue(broken,snapshot),'Ranks are not contiguous');
+});
+
+test('every held-out prediction excludes all records sharing that token, including smaller duplicates',()=>{
+  const audit=atlas.data.audit;
+  assert.equal(audit.count,88);assert.equal(audit.covered,55);assert.equal(audit.coverage,.625);
+  assert.equal(atlas.data.peers.length,88);assert.equal(audit.fallbackAge,atlas.data.model.fallbackAge);
+  for(const fold of audit.folds){
+    const peer=atlas.data.peers.find(p=>p.slug===fold.slug)!;
+    const masked=structuredClone(snapshot);
+    const excluded=masked.protocols.filter(p=>tokenKey(p)===peer.tokenKey);
+    // Retain category metadata: a singleton held-out category must fall back to
+    // the global population, not disappear or accidentally use its own cap.
+    for(const p of excluded){p.mcap_usd=null;p.symbol=null;p.gecko_id=null;}
+    const train=calibrate(masked),c=train.categories.find(c=>c.category===peer.category)!;
+    const independent=estimate(peer,c,atlas.data.model.fallbackAge);
+    assert.equal(fold.excludedRecords,excluded.length);
+    assert.equal(train.peers.length,87);assert.equal(fold.trainingPeers,87);
+    for(const field of ['value','low','high','ageMult','expansion'])assert.equal(fold[field],independent[field],peer.slug+' '+field);
+    assert.equal(fold.covered,peer.mcap>=fold.low&&peer.mcap<=fold.high);
+    assert.ok(Math.abs(fold.error/Math.max(fold.value/peer.mcap,peer.mcap/fold.value)-1)<1e-14);
+  }
+  assert.equal(audit.medianError,quantile(audit.folds.map(f=>f.error),.5));
+  assert.ok(audit.folds.some(f=>f.peerN===0),'singleton categories exercise global fallback');
+});
+
+test('held-out cap and duplicate cap changes cannot leak into that token prediction',()=>{
+  const target=atlas.data.peers[0];
+  const withDuplicate=structuredClone(snapshot),source=withDuplicate.protocols.find(p=>p.slug===target.slug)!;
+  withDuplicate.protocols.push({...source,slug:'audit-shadow-record',name:'Audit shadow',tvl_usd:Math.floor(source.tvl_usd/2)});
+  const original=buildAtlas(withDuplicate).data.audit.folds.find(f=>f.tokenKey===target.tokenKey)!;
+  assert.equal(original.excludedRecords,2);assert.equal(original.trainingPeers,87);
+  const changed=structuredClone(withDuplicate);
+  for(const p of changed.protocols.filter(p=>tokenKey(p)===target.tokenKey))p.mcap_usd=(p.mcap_usd||1)*100;
+  const altered=buildAtlas(changed).data.audit.folds.find(f=>f.tokenKey===target.tokenKey)!;
+  assert.deepEqual([altered.value,altered.low,altered.high],[original.value,original.low,original.high]);
+  assert.notEqual(altered.error,original.error);
+  const unknown=atlas.data.peers.filter(p=>p.age===null);
+  assert.ok(unknown.length>0);
+  for(const p of unknown)assert.equal(atlas.data.audit.folds.find(f=>f.slug===p.slug)!.ageMult,ageFactor(null,atlas.data.model.fallbackAge));
 });

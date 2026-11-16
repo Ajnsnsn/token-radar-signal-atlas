@@ -1,5 +1,6 @@
 out/
 out-check/
+out-atlas02/
 node_modules/
 *.tar.gz
 *.log

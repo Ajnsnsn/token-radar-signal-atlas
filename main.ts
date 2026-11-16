@@ -2,6 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { buildAtlas, parseSnapshot } from './lib/model.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
@@ -14,19 +15,24 @@ const input = option('input', '/input/snapshot.json');
 const inputFile = input.endsWith('.json') ? input : join(input, 'snapshot.json');
 const out = resolve(option('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output'));
 if (!existsSync(inputFile)) throw new Error('Missing sealed snapshot: use --input <snapshot.json>.');
-const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
+const inputBytes=readFileSync(inputFile);
+const snapshot = parseSnapshot(inputBytes.toString('utf8'));
 const { board, data } = buildAtlas(snapshot);
+const inputSha256=createHash('sha256').update(inputBytes).digest('hex');
 
 /** Dictionary encoding keeps every row and peer inside the dossier's source budget. */
 function compactData(d: any): string {
   const cats = [...new Set([...d.rows, ...d.peers].map(p => p.category ?? 'Unclassified'))];
   const chains = [...new Set(d.rows.flatMap(p => p.chains))];
-  const peerIndex = new Map(d.peers.map((p, i) => [p.slug, i]));
-  // Deterministic factors and labels are reconstructed in app.js from their inputs.
-  const rows = d.rows.map(p => [p.slug, p.name, cats.indexOf(p.category ?? 'Unclassified'), p.chains.map(c => chains.indexOf(c)), p.tvl, p.growth, p.age, p.value, p.low, p.high, +p.watch, p.peerSlugs.map(s => peerIndex.get(s))]);
-  const peers = d.peers.map(p => [p.name, cats.indexOf(p.category ?? 'Unclassified'), p.tvl, p.mcap]);
-  const model = { parameters: {priorWeight:d.model.parameters.priorWeight}, globalRatio:d.model.globalRatio, peerCount:d.model.peerCount, fallbackAge:d.model.fallbackAge, ratioWinsor:d.model.ratioWinsor, uncertainty:d.model.uncertainty, categories:d.model.categories.map(c => [cats.indexOf(c.category), c.n, c.weight, c.ratio]) };
-  return 'window.ATLAS=' + JSON.stringify({ ...d, model, categories: cats, chains, rows, peers }).replace(/</g, '\\u003c') + ';\n';
+  // Store raw inputs once. The shared, visible math.js reconstructs all estimates,
+  // nearest examples and 88 held-out folds, with full precision and no network.
+  // Zero is a lossless string reference: a standard name-derived slug, or the
+  // already stored slug as token key. Nonmatching source strings remain literal.
+  const slug=(p:any)=>p.slug===p.name.toLowerCase().replace(/\s+/g,'-')?0:p.slug;
+  const rows = d.rows.map(p => [slug(p),p.name,cats.indexOf(p.category),p.chains.map(c=>chains.indexOf(c)),p.tvl,p.growth,p.age,+p.watch]);
+  const peers = d.peers.map(p => [slug(p),p.name,cats.indexOf(p.category),p.tvl,p.mcap,p.tokenKey===p.slug?0:p.tokenKey,p.growth,p.age,p.duplicateCount]);
+  const model = {fallbackAge:d.model.fallbackAge,uncertainty:d.model.uncertainty};
+  return 'window.ATLAS=' + JSON.stringify({asOf:d.asOf,source:d.source,inputSha256,floor:d.floor,total:d.total,watchlistSize:d.watchlistSize,eligibleSize:d.eligibleSize,model,categories:cats,chains,rows,peers}).replace(/</g, '\\u003c') + ';\n';
 }
 function copyDirectory(from: string, to: string): void {
   mkdirSync(to, { recursive: true });
@@ -57,7 +63,7 @@ validateBoard();
 mkdirSync(out, { recursive: true });
 copyDirectory(join(here, 'dashboard'), join(out, 'dashboard'));
 writeFileSync(join(out, 'dashboard', 'data.js'), compactData(data));
-writeFileSync(join(out, 'board.json'), JSON.stringify({ model: 'Signal Atlas 1', as_of: data.asOf, rows: board }) + '\n');
+writeFileSync(join(out, 'board.json'), JSON.stringify({ model: 'Signal Atlas 2', as_of: data.asOf, input_sha256:inputSha256, audit:data.audit, rows: board }) + '\n');
 const preview = process.argv.includes('--preview');
 if (!preview) {
   copyDirectory(join(here, 'screenshots'), join(out, 'screenshots'));
